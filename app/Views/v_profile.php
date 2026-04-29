@@ -32,7 +32,7 @@
                         Login Time
                     </div>
                     <div class="col-lg-9 col-md-8 text-secondary">
-                        <?php echo $loginTime; ?>
+                        <?php echo $logintime; ?>
                     </div>
                 </div>
 

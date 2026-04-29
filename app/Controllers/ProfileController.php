@@ -9,14 +9,17 @@ class ProfileController extends BaseController
 {
     public function index()
     {   
+        $session = session();
         $data = [
-            'username' => session()->get('username'),
-            'email' => session()->get('email'),
-            'role' => session()->get('role'),
-            'loginTime' => date('d M Y H:i:s', session()->get('logintime'))
-        ];
+            'username' => $session -> username,
+            'email' =>  $session -> email,
+            'role' => $session -> role,
+            'logintime' => $session -> logintime,
+            'isLoggedIn' => $session -> isLoggedIn
 
-        return view('v_profile', $data);
+        ];
+        
+        return view("v_profile",$data);
     }
 
 }
