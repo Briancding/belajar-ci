@@ -98,10 +98,16 @@ class TransaksiController extends BaseController
     }
 
     public function checkout()
-    {  
+    {
+        helper('diskon');
+
+        $subtotal = $this->cart->total();
+
         $data = [
-            'items' => $this->cart->contents(),
-            'total' => $this->cart->total() 
+            'items'    => $this->cart->contents(),
+            'total'    => $subtotal,
+            'biaya_jasa'  => hitung_biaya_jasa($subtotal),
+            'free_mouse'  => hitung_free_mouse($subtotal),
         ];
 
         return view('v_checkout', $data);
@@ -129,11 +135,6 @@ class TransaksiController extends BaseController
                 'text' => $item['label']
             ];
         }
-
-        $results = [
-            'id'   => $search,
-            'text' => $search
-        ];
 
         return $this->response->setJSON([
             'results' => $results
@@ -166,7 +167,9 @@ class TransaksiController extends BaseController
     }
 
     public function buy()
-    { 
+    {
+        helper('diskon');
+
         $cartItems = $this->cart->contents();
 
         if (empty($cartItems)) {
@@ -174,24 +177,37 @@ class TransaksiController extends BaseController
         }
 
         $db = \Config\Database::connect();
-        $db->transStart(); 
+        $db->transStart();
 
+        // Hitung subtotal dari cart
         $subtotal = 0;
         foreach ($cartItems as $item) {
             $subtotal += $item['qty'] * $item['price'];
         }
 
-        $ongkir = (int) $this->request->getPost('ongkir');
+        $ongkir       = (int) $this->request->getPost('ongkir');
+        $voucher_code = $this->request->getPost('voucher_code') ?? '';
+
+        // Hitung semua komponen
+        $biaya_jasa     = hitung_biaya_jasa($subtotal);
+        $diskon_voucher = hitung_diskon_voucher($subtotal, $voucher_code);
+        $free_mouse     = hitung_free_mouse($subtotal);
+
+        // Grand Total = Subtotal + Biaya Jasa - Diskon Voucher - Free Mouse + Ongkir
+        $grand_total = $subtotal + $biaya_jasa - $diskon_voucher - $free_mouse + $ongkir;
 
         $transaction = [
-            'username'    => $this->request->getPost('username'),
-            'alamat'      => $this->request->getPost('alamat'),
-            'ongkir'      => $ongkir,
-            'total_harga' => $subtotal + $ongkir,
-            'status'      => 0, 
+            'username'       => $this->request->getPost('username'),
+            'alamat'         => $this->request->getPost('alamat'),
+            'ongkir'         => $ongkir,
+            'biaya_jasa'     => $biaya_jasa,
+            'voucher_code'   => strtoupper(trim($voucher_code)),
+            'diskon_voucher' => $diskon_voucher,
+            'free_mouse'     => $free_mouse,
+            'total_harga'    => $grand_total,
+            'status'         => 0,
         ];
 
-        // insert transaction
         if (!$this->transactionModel->insert($transaction)) {
             $db->transRollback();
             return redirect()->back()->with('error', 'Gagal membuat transaksi');
@@ -199,14 +215,13 @@ class TransaksiController extends BaseController
 
         $transactionId = $this->transactionModel->getInsertID();
 
-        // insert transaction detail
         foreach ($cartItems as $item) {
             $this->transactionDetailModel->insert([
                 'transaction_id' => $transactionId,
                 'product_id'     => $item['id'],
                 'jumlah'         => $item['qty'],
                 'diskon'         => 0,
-                'subtotal_harga' => $item['qty'] * $item['price'] 
+                'subtotal_harga' => $item['qty'] * $item['price']
             ]);
         }
 
@@ -216,7 +231,6 @@ class TransaksiController extends BaseController
             return redirect()->back()->with('error', 'Gagal membuat transaksi');
         }
 
-            //hapus session keranjang belanja 
         $this->cart->destroy();
         return redirect()->to(base_url());
     }
